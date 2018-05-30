@@ -4,6 +4,8 @@ import numbers
 from operator import itemgetter
 import itertools
 import six
+from collections import Counter
+from collections import OrderedDict
 
 DEFAULT_X_TOLERANCE = 3
 DEFAULT_Y_TOLERANCE = 3
@@ -99,15 +101,49 @@ def to_list(collection):
     else:
         return list(collection)
 
-def collate_line(line_chars, tolerance=DEFAULT_X_TOLERANCE):
+def collate_line(line_chars, tolerance=DEFAULT_X_TOLERANCE, cha_size=Counter()):
+    most_freq = 0.0
+    sorted_size = []
+    if cha_size:
+        sorted_size = sorted(cha_size.items(), key=lambda x: x[1], reverse=True)
+        most_freq = sorted_size[0]
+        sorted_biggest_size = sorted(cha_size.items(), key=lambda x: x[0], reverse=True)
+        biggest_size = sorted_biggest_size[0][0]
+        bucket_ratio = (float(biggest_size) - float(most_freq[0])) / 6.0
+        bucket = [(float(biggest_size)-(bucket_ratio*(i)), (float(biggest_size)-(bucket_ratio*(i + 1))), "h" + str(i + 2) if i <= 4 else "b" ) for i in range(6)]
+    getbucket = lambda xx: (xx[0][0] >= xx[1] and xx[1] > xx[0][1])
+
     tolerance = decimalize(tolerance)
     coll = ""
     last_x1 = None
+    already_bold = [False, 0.0, ""]
+    coz_of_bold = False
     for char in sorted(line_chars, key=itemgetter("x0")):
+        if char["text"].strip() and ("bold" in char["fontname"].lower() or (cha_size and char["size"] > most_freq[0])) and not already_bold[0]:
+            if "bold" in char["fontname"].lower():
+                coz_of_bold = True
+            this_bucket = list(filter(getbucket, zip(bucket, [float(char["size"])] * len(bucket))))
+            tag = "b"
+            if this_bucket:
+                try:
+                    tag = this_bucket[0][0][2]
+                except:
+                    tag = "b"
+            coll += "<" + tag + ">"
+            already_bold[0] = True
+            already_bold[1] = char["size"]
+            already_bold[2] = tag
+        if already_bold[0] and (char["size"] < already_bold[1] or (coz_of_bold == True and "bold" not in char["fontname"].lower())):
+            coll += "</" + already_bold[2] + ">"
+            already_bold = [False, 0.0, ""]
+            coz_of_bold = False
         if (last_x1 != None) and (char["x0"] > (last_x1 + tolerance)):
             coll += " "
         last_x1 = char["x1"]
         coll += char["text"]
+    if already_bold[0]:
+        coll += "</" + already_bold[2] + ">"
+        already_bold = [False, 0.0, ""]
     return coll
 
 def objects_to_rect(objects):
@@ -191,17 +227,74 @@ def extract_words(chars,
     words = list(itertools.chain(*nested))
     return words
 
-def extract_text(chars,
+def get_line_pos(chars, option):
+    chars = to_list(chars)
+    cha_top = [cha['top'] for cha in chars]
+    if option == 'footer':
+        cha_top = sorted(list(set(cha_top)), reverse = True)
+    elif option == 'header':
+        cha_top = sorted(list(set(cha_top)))
+    return cha_top
+
+def get_line_pos_text(chars):
+    chars = to_list(chars)
+    cha_text = {}
+    for cha in chars:
+        if cha['top'] not in cha_text:
+            cha_text[cha['top']] = []
+        cha_text[cha['top']].append(cha['text'])
+    cha_text = OrderedDict(sorted(cha_text.items()))
+    return cha_text
+
+def get_text_for_pos(chars, pos):
+    chars = to_list(chars)
+    cha_top = [cha['text'] for cha in chars if float(cha['top']) == float(pos)]
+    return ''.join(cha_top)
+
+def extract_text(chars, set_of_positions,
     x_tolerance=DEFAULT_X_TOLERANCE,
-    y_tolerance=DEFAULT_Y_TOLERANCE):
+    y_tolerance=DEFAULT_Y_TOLERANCE ):
 
     if len(chars) == 0:
         return None
 
     chars = to_list(chars)
+    if set_of_positions.values():
+        for option in ['header', 'footer']:
+            if set_of_positions[option]:
+                chars_removed = [cha_r['text'] for cha_r in chars if (option == 'footer' and cha_r['top'] >= set_of_positions[option]) or (option == 'header' and cha_r['top'] <= set_of_positions[option])]
+                chars = [cha_r for cha_r in chars if (option == 'footer' and cha_r['top'] < set_of_positions[option]) or (option == 'header' and cha_r['top'] > set_of_positions[option])]
+                print(''.join(chars_removed))
+    cha_size = Counter([cha["size"] for cha in chars])
     doctop_clusters = cluster_objects(chars, "doctop", y_tolerance)
 
-    lines = (collate_line(line_chars, x_tolerance)
+    lines = (collate_line(line_chars, x_tolerance, cha_size=cha_size)
+        for line_chars in doctop_clusters)
+
+    coll = "\n".join(lines)
+    return coll
+
+def extract_text_for_table(chars, set_of_positions,
+    x_tolerance=DEFAULT_X_TOLERANCE,
+    y_tolerance=DEFAULT_Y_TOLERANCE ):
+
+    if len(chars) == 0:
+        return None
+
+    chars = to_list(chars)
+    if set_of_positions.values():
+        for option in ['header', 'footer']:
+            if set_of_positions[option]:
+                chars_removed = [cha_r['text'] for cha_r in chars if (option == 'footer' and cha_r['top'] >= set_of_positions[option]) or (option == 'header' and cha_r['top'] <= set_of_positions[option])]
+                if chars_removed:
+                    chars = []
+                    print(''.join(chars_removed))
+                else:
+                    chars = [cha_r for cha_r in chars if (option == 'footer' and cha_r['top'] < set_of_positions[option]) or (option == 'header' and cha_r['top'] > set_of_positions[option])]
+    cha_size = Counter([cha["size"] for cha in chars])
+    doctop_clusters = cluster_objects(chars, "doctop", y_tolerance)
+
+    lines = (collate_line(line_chars, x_tolerance, cha_size=cha_size)
         for line_chars in doctop_clusters)
 
     coll = "\n".join(lines)
@@ -428,7 +521,7 @@ def filter_edges(edges, orientation=None,
         dim = "height" if e["orientation"] == "v" else "width"
         et = (e["object_type"] == edge_type if edge_type != None else True)
         return et & (
-            (True if orientation == None else (e["orientation"] == orientation)) & 
+            (True if orientation == None else (e["orientation"] == orientation)) &
             (e[dim] >= min_length)
         )
 

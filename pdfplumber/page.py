@@ -124,7 +124,7 @@ class Page(Container):
             if hasattr(obj, "_objs"):
                 for child in obj._objs:
                     process_object(child)
-        
+
         for obj in self.layout._objs:
             process_object(obj)
 
@@ -136,24 +136,33 @@ class Page(Container):
     def find_tables(self, table_settings={}):
         return TableFinder(self, table_settings).tables
 
-    def extract_tables(self, table_settings={}):
+    def extract_tables(self, table_settings={}, set_of_positions = {}):
         tables = self.find_tables(table_settings)
-        return [ table.extract() for table in tables ]
+        return [ table.extract(set_of_positions=set_of_positions) for table in tables ]
 
-    def extract_table(self, table_settings={}):
+    def extract_table(self, table_settings={}, set_of_positions = {}):
         tables = self.find_tables(table_settings)
         # Return the largest table, as measured by number of cells.
         sorter = lambda x: (len(x.cells), x.bbox[1], x.bbox[0])
         largest = list(sorted(tables, key=sorter))[0]
-        return largest.extract()
+        return largest.extract(set_of_positions=set_of_positions)
 
     def extract_text(self,
         x_tolerance=utils.DEFAULT_X_TOLERANCE,
-        y_tolerance=utils.DEFAULT_Y_TOLERANCE):
+        y_tolerance=utils.DEFAULT_Y_TOLERANCE, set_of_positions = {}):
 
-        return utils.extract_text(self.chars,
+        return utils.extract_text(self.chars, set_of_positions,
             x_tolerance=x_tolerance,
             y_tolerance=y_tolerance)
+
+    def get_line_pos(self, option):
+        return utils.get_line_pos(self.chars, option)
+
+    def get_line_pos_text(self):
+        return utils.get_line_pos_text(self.chars)
+
+    def get_text_for_pos(self, pos):
+        return utils.get_text_for_pos(self.chars, pos)
 
     def extract_words(self,
         x_tolerance=utils.DEFAULT_X_TOLERANCE,
