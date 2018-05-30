@@ -128,14 +128,14 @@ def words_to_edges_v(words,
     by_x1 = utils.cluster_objects(words, "x1", 1)
     by_center = utils.cluster_objects(words, lambda x: (x["x0"] + x["x1"])/2, 1)
     clusters = by_x0 + by_x1 + by_center
-    
+
     # Find the points that align with the most words
     sorted_clusters = sorted(clusters, key=lambda x: -len(x))
     large_clusters = filter(lambda x: len(x) >= word_threshold, sorted_clusters)
-    
+
     # For each of those points, find the rectangles fitting all matching words
     rects = list(map(utils.objects_to_rect, large_clusters))
-    
+
     # Iterate through those rectangles, condensing overlapping rectangles
     condensed_rects = []
     for rect in rects:
@@ -146,7 +146,7 @@ def words_to_edges_v(words,
                 break
         if overlap == False:
             condensed_rects.append(rect)
-            
+
     if len(condensed_rects) == 0:
         return []
     sorted_rects = list(sorted(condensed_rects, key=itemgetter("x0")))
@@ -156,14 +156,14 @@ def words_to_edges_v(words,
     while True:
         words_inside = utils.intersects_bbox(
             [ w for w in words if w["x0"] >= last_rect["x0"] ],
-            (last_rect["x0"], last_rect["top"], last_rect["x1"], last_rect["bottom"]), 
+            (last_rect["x0"], last_rect["top"], last_rect["x1"], last_rect["bottom"]),
         )
         rect = utils.objects_to_rect(words_inside)
         if rect == last_rect:
             break
         else:
             last_rect = rect
-    
+
     # Describe all the left-hand edges of each text cluster
     edges = [ {
         "x0": b["x0"],
@@ -180,7 +180,7 @@ def words_to_edges_v(words,
         "height": last_rect["bottom"] - last_rect["top"],
         "orientation": "v"
     } ]
-    
+
     return edges
 
 def edges_to_intersections(edges, x_tolerance=1, y_tolerance=1):
@@ -202,7 +202,7 @@ def edges_to_intersections(edges, x_tolerance=1, y_tolerance=1):
                 intersections[vertex]["v"].append(v)
                 intersections[vertex]["h"].append(h)
     return intersections
-    
+
 
 def intersections_to_cells(intersections):
     """
@@ -227,28 +227,28 @@ def intersections_to_cells(intersections):
                 .intersection(edges_to_set(intersections[p2]["h"]))
             if len(common): return True
         return False
-    
-    points = list(sorted(intersections.keys()))     
+
+    points = list(sorted(intersections.keys()))
     n_points = len(points)
     def find_smallest_cell(points, i):
         if i == n_points - 1: return None
         pt = points[i]
         rest = points[i+1:]
         # Get all the points directly below and directly right
-        below = [ x for x in rest if x[0] == pt[0] ] 
-        right = [ x for x in rest if x[1] == pt[1] ] 
+        below = [ x for x in rest if x[0] == pt[0] ]
+        right = [ x for x in rest if x[1] == pt[1] ]
         for below_pt in below:
             if not edge_connects(pt, below_pt): continue
-                
+
             for right_pt in right:
                 if not edge_connects(pt, right_pt): continue
-                
+
                 bottom_right = (right_pt[0], below_pt[1])
-                
+
                 if ((bottom_right in intersections) and
                     edge_connects(bottom_right, right_pt) and
                     edge_connects(bottom_right, below_pt)):
-                    
+
                     return (
                         pt[0],
                         pt[1],
@@ -266,19 +266,19 @@ def cells_to_tables(cells):
     def bbox_to_corners(bbox):
         x0, top, x1, bottom = bbox
         return list(itertools.product((x0, x1), (top, bottom)))
-    
+
     cells = [ {
         "available": True,
         "bbox": bbox,
         "corners": bbox_to_corners(bbox)
     } for bbox in cells ]
-    
+
         # Iterate through the cells found above, and assign them
     # to contiguous tables
-    
+
     def init_new_table():
         return { "corners": set([]), "cells": [] }
-    
+
     def assign_cell(cell, table):
         table["corners"] = table["corners"].union(set(cell["corners"]))
         table["cells"].append(cell["bbox"])
@@ -308,7 +308,7 @@ def cells_to_tables(cells):
 
     if len(current_table["cells"]):
         tables.append(current_table)
-        
+
     _sorted = sorted(tables, key=lambda t: min(t["corners"]))
     filtered = [ t["cells"] for t in _sorted if len(t["cells"]) > 1 ]
     return filtered
@@ -339,7 +339,7 @@ class Table(object):
 
     @property
     def rows(self):
-        _sorted = sorted(self.cells, key=itemgetter(1, 0)) 
+        _sorted = sorted(self.cells, key=itemgetter(1, 0))
         xs = list(sorted(set(map(itemgetter(0), self.cells))))
         rows = []
         for y, row_cells in itertools.groupby(_sorted, itemgetter(1)):
@@ -350,7 +350,7 @@ class Table(object):
 
     def extract(self,
         x_tolerance=utils.DEFAULT_X_TOLERANCE,
-        y_tolerance=utils.DEFAULT_Y_TOLERANCE):
+        y_tolerance=utils.DEFAULT_Y_TOLERANCE, set_of_positions = {}):
 
         chars = self.page.chars
         table_arr = []
@@ -378,7 +378,7 @@ class Table(object):
                         if char_in_bbox(char, cell) ]
 
                     if len(cell_chars):
-                        cell_text = utils.extract_text(cell_chars,
+                        cell_text = utils.extract_text_for_table(cell_chars, set_of_positions,
                             x_tolerance=x_tolerance,
                             y_tolerance=y_tolerance).strip()
                     else:
@@ -513,7 +513,7 @@ class TableFinder(object):
             v_base = []
 
         v = v_base + v_explicit
-        
+
         def h_edge_desc_to_edge(desc):
             if isinstance(desc, dict):
                 edge = {
